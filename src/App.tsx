@@ -783,7 +783,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <p>© {new Date().getFullYear()} Gerador de QR Code do Instagram. Todos os direitos reservados.</p>
           <p className="flex items-center justify-center gap-1">
-            Feito com <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" /> para criadores do Instagram
+            Feito com <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" /> por Jean Pierre para criadores do Instagram
           </p>
         </div>
       </footer>
