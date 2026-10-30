@@ -35,6 +35,48 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
     ctx.closePath();
   };
 
+  // Helper to compute a linear gradient at any angle matching CSS linear-gradient(deg)
+  const createAngledGradient = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    angleDeg: number,
+    colors: string[]
+  ): CanvasGradient => {
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+
+    // CSS linear-gradient: 0deg is UP, 90deg is RIGHT, 180deg is DOWN, 270deg is LEFT.
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Compute bounding length to ensure corners receive full gradient stops
+    const length = Math.abs(width * cos) + Math.abs(height * sin);
+    const halfLen = length / 2;
+
+    const x0 = cx - cos * halfLen;
+    const y0 = cy - sin * halfLen;
+    const x1 = cx + cos * halfLen;
+    const y1 = cy + sin * halfLen;
+
+    const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+    if (!colors || colors.length === 0) {
+      grad.addColorStop(0, '#f09433');
+      grad.addColorStop(1, '#bc1888');
+    } else if (colors.length === 1) {
+      grad.addColorStop(0, colors[0]);
+      grad.addColorStop(1, colors[0]);
+    } else {
+      colors.forEach((color, idx) => {
+        grad.addColorStop(idx / (colors.length - 1), color);
+      });
+    }
+    return grad;
+  };
+
   // Helper to draw the Instagram Logo in the center of the QR Code
   const drawInstagramLogo = (
     ctx: CanvasRenderingContext2D,
@@ -42,42 +84,41 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
     y: number,
     size: number,
     logoStyle: LogoStyle,
-    gradientColors: string[]
+    gradientColors: string[],
+    isDarkBg: boolean = false,
+    gradientAngle: number = 45
   ) => {
     ctx.save();
     ctx.translate(x, y);
 
-    // 1. Draw a white rounded background behind the logo to mask QR modules
-    ctx.fillStyle = '#FFFFFF';
+    // 1. Draw rounded background behind the logo to mask QR modules cleanly
+    ctx.fillStyle = isDarkBg ? '#111827' : '#FFFFFF';
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, size * 0.65, 0, 2 * Math.PI);
     ctx.fill();
 
     // 2. Select logo color based on style
-    let color: string | CanvasGradient = '#000000';
+    let color: string | CanvasGradient = isDarkBg ? '#FFFFFF' : '#000000';
     if (logoStyle === 'classic') {
-      const grad = ctx.createLinearGradient(0, size, size, 0);
-      if (gradientColors.length >= 2) {
-        gradientColors.forEach((col, idx) => {
-          grad.addColorStop(idx / (gradientColors.length - 1), col);
-        });
-      } else {
-        grad.addColorStop(0, '#f09433');
-        grad.addColorStop(0.25, '#e6683c');
-        grad.addColorStop(0.5, '#dc2743');
-        grad.addColorStop(0.75, '#cc2366');
-        grad.addColorStop(1, '#bc1888');
-      }
+      const grad = createAngledGradient(ctx, 0, 0, size, size, gradientAngle, gradientColors);
       color = grad;
     } else if (logoStyle === 'white') {
       color = '#FFFFFF';
-      // Draw a dark circle background first
-      ctx.fillStyle = '#111827';
-      ctx.beginPath();
-      ctx.arc(size / 2, size / 2, size * 0.58, 0, 2 * Math.PI);
-      ctx.fill();
+      if (!isDarkBg) {
+        // Draw a dark circle background badge first if on light background
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size * 0.58, 0, 2 * Math.PI);
+        ctx.fill();
+      }
     } else if (logoStyle === 'dark') {
-      color = '#111827';
+      color = isDarkBg ? '#FFFFFF' : '#111827';
+      if (isDarkBg) {
+        ctx.fillStyle = '#1F2937';
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size * 0.58, 0, 2 * Math.PI);
+        ctx.fill();
+      }
     }
 
     ctx.strokeStyle = color;
@@ -182,23 +223,24 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
           // Draw the full Instagram rounded card with gradient background
 
           // A. Draw Gradient Card Background
-          const cardGrad = ctx.createLinearGradient(0, height, width, 0);
-          gradientColors.forEach((color, index) => {
-            cardGrad.addColorStop(index / (gradientColors.length - 1), color);
-          });
+          const angle = config.gradientAngle ?? 45;
+          const cardGrad = createAngledGradient(ctx, 0, 0, width, height, angle, gradientColors);
           ctx.fillStyle = cardGrad;
           drawRoundedRect(ctx, 0, 0, width, height, 32);
           ctx.fill();
 
-          // B. Draw White QR Code Container Box in the center
+          // B. Draw QR Code Container Box in the center
           // Box size is 74% of card width
           const qrBoxSize = width * 0.74;
           const qrBoxX = (width - qrBoxSize) / 2;
           const qrBoxY = height * 0.14; // Positioned near top
           
-          ctx.fillStyle = '#FFFFFF';
+          const isDarkCardBox = config.qrBgColor === '#111827' || config.qrBgColor === '#000000';
+          const cardBoxBgColor = isDarkCardBox ? '#111827' : '#FFFFFF';
+          ctx.fillStyle = cardBoxBgColor;
+          
           // Add drop shadow
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.16)';
           ctx.shadowBlur = 20;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 8;
@@ -210,16 +252,22 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
 
-          // C. Draw QR Code inside the white box
+          // C. Draw QR Code inside the box
           const qrPadding = qrBoxSize * 0.08;
           const qrDrawSize = qrBoxSize - qrPadding * 2;
           const cellSize = qrDrawSize / matrixSize;
           const qrStartX = qrBoxX + qrPadding;
           const qrStartY = qrBoxY + qrPadding;
 
-          // Set QR module color
-          const finalQRColor = config.qrColor || '#111827';
-          const finalQRBgColor = '#FFFFFF'; // QR Background is solid white inside the card
+          // Set QR module color with automatic inversion to white on dark background, or linear gradient
+          let finalQRColor: string | CanvasGradient = config.qrColor || '#111827';
+          if (isDarkCardBox && (finalQRColor === '#111827' || finalQRColor === '#000000')) {
+            finalQRColor = '#FFFFFF';
+          }
+          if (config.qrColor === 'gradient') {
+            finalQRColor = createAngledGradient(ctx, qrStartX, qrStartY, qrDrawSize, qrDrawSize, angle, gradientColors);
+          }
+          const finalQRBgColor = cardBoxBgColor;
 
           // Draw modules
           ctx.fillStyle = finalQRColor;
@@ -256,13 +304,15 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
                   ctx.fill();
 
                   if (config.contrastDots) {
-                    // Draw a crisp high-contrast dot effect (donut or concentric rings)
-                    ctx.fillStyle = '#FFFFFF';
+                    const dotInnerBg = isDarkCardBox ? '#111827' : '#FFFFFF';
+                    const dotCenterFill = isDarkCardBox ? '#FFFFFF' : '#111827';
+
+                    ctx.fillStyle = dotInnerBg;
                     ctx.beginPath();
                     ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize / 2 * 0.4, 0, 2 * Math.PI);
                     ctx.fill();
 
-                    ctx.fillStyle = finalQRColor === '#111827' || finalQRColor === '#000000' ? '#111827' : '#000000';
+                    ctx.fillStyle = dotCenterFill;
                     ctx.beginPath();
                     ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize / 2 * 0.18, 0, 2 * Math.PI);
                     ctx.fill();
@@ -275,11 +325,14 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
                   ctx.fill();
 
                   if (config.contrastDots) {
-                    ctx.fillStyle = '#FFFFFF';
+                    const dotInnerBg = isDarkCardBox ? '#111827' : '#FFFFFF';
+                    const dotCenterFill = isDarkCardBox ? '#FFFFFF' : '#111827';
+
+                    ctx.fillStyle = dotInnerBg;
                     drawRoundedRect(ctx, x + cellSize * 0.3, y + cellSize * 0.3, cellSize * 0.4, cellSize * 0.4, cellSize * 0.1);
                     ctx.fill();
 
-                    ctx.fillStyle = finalQRColor === '#111827' || finalQRColor === '#000000' ? '#111827' : '#000000';
+                    ctx.fillStyle = dotCenterFill;
                     drawRoundedRect(ctx, x + cellSize * 0.4, y + cellSize * 0.4, cellSize * 0.2, cellSize * 0.2, cellSize * 0.05);
                     ctx.fill();
 
@@ -289,10 +342,13 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
                   ctx.fillRect(x, y, cellSize, cellSize);
 
                   if (config.contrastDots) {
-                    ctx.fillStyle = '#FFFFFF';
+                    const dotInnerBg = isDarkCardBox ? '#111827' : '#FFFFFF';
+                    const dotCenterFill = isDarkCardBox ? '#FFFFFF' : '#111827';
+
+                    ctx.fillStyle = dotInnerBg;
                     ctx.fillRect(x + cellSize * 0.3, y + cellSize * 0.3, cellSize * 0.4, cellSize * 0.4);
                     
-                    ctx.fillStyle = finalQRColor === '#111827' || finalQRColor === '#000000' ? '#111827' : '#000000';
+                    ctx.fillStyle = dotCenterFill;
                     ctx.fillRect(x + cellSize * 0.4, y + cellSize * 0.4, cellSize * 0.2, cellSize * 0.2);
 
                     ctx.fillStyle = finalQRColor;
@@ -303,9 +359,13 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
           }
 
           // D. Draw Finder Patterns (Eyes) with custom style
-          const eyeColor = config.contrastEyes 
-            ? '#111827' 
-            : (config.qrColor === 'gradient' ? '#111827' : finalQRColor);
+          let eyeColor: string | CanvasGradient = finalQRColor;
+          if (isDarkCardBox && (eyeColor === '#111827' || eyeColor === '#000000')) {
+            eyeColor = '#FFFFFF';
+          }
+          if (config.contrastEyes) {
+            eyeColor = isDarkCardBox ? '#FFFFFF' : '#111827';
+          }
           drawFinderPattern(ctx, qrStartX, qrStartY, cellSize, eyeColor, finalQRBgColor); // Top-left
           drawFinderPattern(ctx, qrStartX + (matrixSize - 7) * cellSize, qrStartY, cellSize, eyeColor, finalQRBgColor); // Top-right
           drawFinderPattern(ctx, qrStartX, qrStartY + (matrixSize - 7) * cellSize, cellSize, eyeColor, finalQRBgColor); // Bottom-left
@@ -315,7 +375,7 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
             const logoSize = cellSize * 7;
             const logoX = qrStartX + (centerCell - 3) * cellSize;
             const logoY = qrStartY + (centerCell - 3) * cellSize;
-            drawInstagramLogo(ctx, logoX, logoY, logoSize, config.logoStyle, gradientColors);
+            drawInstagramLogo(ctx, logoX, logoY, logoSize, config.logoStyle, gradientColors, isDarkCardBox, angle);
           }
 
           // F. Draw Instagram Username
@@ -379,20 +439,23 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
           const qrStartX = qrPadding;
           const qrStartY = qrPadding;
 
+          const isDarkBg = config.qrBgColor === '#111827' || config.qrBgColor === '#000000';
+
           // Fill Canvas Background
           if (config.qrBgColor !== 'transparent') {
             ctx.fillStyle = config.qrBgColor;
             ctx.fillRect(0, 0, width, height);
           }
 
-          // Set QR module color (could be a gradient!)
+          const angle = config.gradientAngle ?? 45;
+
+          // Set QR module color with automatic inversion to white on dark background
           let finalQRColor: string | CanvasGradient = config.qrColor || '#111827';
+          if (isDarkBg && (finalQRColor === '#111827' || finalQRColor === '#000000')) {
+            finalQRColor = '#FFFFFF';
+          }
           if (config.qrColor === 'gradient') {
-            const qrGrad = ctx.createLinearGradient(qrStartX, qrStartY + qrDrawSize, qrStartX + qrDrawSize, qrStartY);
-            gradientColors.forEach((color, index) => {
-              qrGrad.addColorStop(index / (gradientColors.length - 1), color);
-            });
-            finalQRColor = qrGrad;
+            finalQRColor = createAngledGradient(ctx, qrStartX, qrStartY, qrDrawSize, qrDrawSize, angle, gradientColors);
           }
 
           ctx.fillStyle = finalQRColor;
@@ -484,20 +547,23 @@ export default function InstagramQRCanvas({ config, onCanvasReady }: InstagramQR
 
           // D. Draw Finder Patterns (Eyes)
           let eyeColor = finalQRColor;
-          if (config.contrastEyes) {
-            const isBgDark = config.qrBgColor === '#111827' || config.qrBgColor === '#000000';
-            eyeColor = isBgDark ? '#FFFFFF' : '#111827';
+          if (isDarkBg && (eyeColor === '#111827' || eyeColor === '#000000')) {
+            eyeColor = '#FFFFFF';
           }
-          drawFinderPattern(ctx, qrStartX, qrStartY, cellSize, eyeColor, config.qrBgColor); // Top-left
-          drawFinderPattern(ctx, qrStartX + (matrixSize - 7) * cellSize, qrStartY, cellSize, eyeColor, config.qrBgColor); // Top-right
-          drawFinderPattern(ctx, qrStartX, qrStartY + (matrixSize - 7) * cellSize, cellSize, eyeColor, config.qrBgColor); // Bottom-left
+          if (config.contrastEyes) {
+            eyeColor = isDarkBg ? '#FFFFFF' : '#111827';
+          }
+          const finderBg = config.qrBgColor === 'transparent' ? '#FFFFFF' : config.qrBgColor;
+          drawFinderPattern(ctx, qrStartX, qrStartY, cellSize, eyeColor, finderBg); // Top-left
+          drawFinderPattern(ctx, qrStartX + (matrixSize - 7) * cellSize, qrStartY, cellSize, eyeColor, finderBg); // Top-right
+          drawFinderPattern(ctx, qrStartX, qrStartY + (matrixSize - 7) * cellSize, cellSize, eyeColor, finderBg); // Bottom-left
 
           // E. Draw Central Instagram Logo
           if (config.logoStyle !== 'none') {
             const logoSize = cellSize * 7;
             const logoX = qrStartX + (centerCell - 3) * cellSize;
             const logoY = qrStartY + (centerCell - 3) * cellSize;
-            drawInstagramLogo(ctx, logoX, logoY, logoSize, config.logoStyle, gradientColors);
+            drawInstagramLogo(ctx, logoX, logoY, logoSize, config.logoStyle, gradientColors, isDarkBg, angle);
           }
         }
 

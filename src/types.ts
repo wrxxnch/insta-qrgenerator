@@ -25,6 +25,7 @@ export interface QRConfig {
   size: number;
   contrastDots: boolean;
   contrastEyes: boolean;
+  gradientAngle: number;
 }
 
 export const INSTAGRAM_GRADIENTS: InstagramGradient[] = [
