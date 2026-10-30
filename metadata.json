@@ -1,0 +1,6 @@
+{
+  "name": "Gerador de QR Code do Instagram",
+  "description": "Crie códigos QR para perfis do Instagram personalizados com as cores oficiais, gradientes e o logotipo do Instagram integrado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
